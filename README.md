@@ -1,7 +1,7 @@
 # Shadows Over Westgate Wiki.js Production Deployment
 
 This repository contains the custom `westgate` Wiki.js theme in
-`client/themes/westgate`.
+`client/themes/wikijs`.
 
 The key production constraint is:
 
@@ -71,8 +71,8 @@ newgrp docker
 This repository is the customization source, not the production base image.
 
 ```bash
-mkdir -p "$HOME/westgate"
-cd "$HOME/westgate"
+mkdir -p "$HOME/wikijs"
+cd "$HOME/wikijs"
 git clone <YOUR_REPO_URL> customizations
 cd customizations
 ```
@@ -80,8 +80,8 @@ cd customizations
 ## Create The Deployment Directory
 
 ```bash
-mkdir -p "$HOME/westgate/deploy"
-cd "$HOME/westgate/deploy"
+mkdir -p "$HOME/wikijs/deploy"
+cd "$HOME/wikijs/deploy"
 ```
 
 Create `.env`:
@@ -139,13 +139,13 @@ volumes:
 Create a clean build workspace:
 
 ```bash
-cd "$HOME/westgate/deploy"
+cd "$HOME/wikijs/deploy"
 set -a
 . ./.env
 set +a
 
-mkdir -p "$HOME/westgate/build"
-cd "$HOME/westgate/build"
+mkdir -p "$HOME/wikijs/build"
+cd "$HOME/wikijs/build"
 rm -rf wiki-src
 curl -fsSL "https://github.com/Requarks/wiki/archive/refs/tags/v${WIKI_VERSION}.tar.gz" | tar -xz
 mv "wiki-${WIKI_VERSION}" wiki-src
@@ -154,7 +154,7 @@ mv "wiki-${WIKI_VERSION}" wiki-src
 Copy the Westgate theme into the stable source tree:
 
 ```bash
-rsync -a "$HOME/westgate/customizations/client/themes/westgate/" "$HOME/westgate/build/wiki-src/client/themes/westgate/"
+rsync -a "$HOME/wikijs/customizations/client/themes/wikijs/" "$HOME/wikijs/build/wiki-src/client/themes/wikijs/"
 ```
 
 If this repository later carries additional production overrides outside the
@@ -169,7 +169,7 @@ to review are:
 Patch the release metadata that Wiki.js reads at runtime:
 
 ```bash
-cd "$HOME/westgate/build/wiki-src"
+cd "$HOME/wikijs/build/wiki-src"
 sed -i 's/"dev": true/"dev": false/' package.json
 sed -i "s/\"version\": \"2.0.0\"/\"version\": \"${WIKI_VERSION}\"/" package.json
 sed -i "s/\"releaseDate\": \".*\"/\"releaseDate\": \"${WIKI_RELEASE_DATE}\"/" package.json
@@ -191,7 +191,7 @@ This gives you:
 ## Start Wiki.js
 
 ```bash
-cd "$HOME/westgate/deploy"
+cd "$HOME/wikijs/deploy"
 docker compose up -d
 docker compose logs -f wiki
 ```
@@ -249,7 +249,7 @@ After first login, choose the `Westgate` theme in the admin UI if it appears.
 If needed, confirm the active theme directly in PostgreSQL:
 
 ```bash
-cd "$HOME/westgate/deploy"
+cd "$HOME/wikijs/deploy"
 set -a
 . ./.env
 set +a
@@ -275,7 +275,7 @@ When you want to upgrade:
 1. Pick a newer release only after confirming it is stable in the official docs
    or on `js.wiki`.
 2. Update `WIKI_VERSION`, `WIKI_RELEASE_DATE`, and `WIKI_IMAGE` in
-   `$HOME/westgate/deploy/.env`.
+   `$HOME/wikijs/deploy/.env`.
 3. Rebuild the stable build context from that release.
 4. Re-copy the Westgate theme and any shared overrides.
 5. Re-apply the `package.json` metadata patch.
@@ -284,24 +284,24 @@ When you want to upgrade:
 Commands:
 
 ```bash
-cd "$HOME/westgate/deploy"
+cd "$HOME/wikijs/deploy"
 set -a
 . ./.env
 set +a
 
-cd "$HOME/westgate/build"
+cd "$HOME/wikijs/build"
 rm -rf wiki-src
 curl -fsSL "https://github.com/Requarks/wiki/archive/refs/tags/v${WIKI_VERSION}.tar.gz" | tar -xz
 mv "wiki-${WIKI_VERSION}" wiki-src
-rsync -a "$HOME/westgate/customizations/client/themes/westgate/" "$HOME/westgate/build/wiki-src/client/themes/westgate/"
+rsync -a "$HOME/wikijs/customizations/client/themes/wikijs/" "$HOME/wikijs/build/wiki-src/client/themes/wikijs/"
 
-cd "$HOME/westgate/build/wiki-src"
+cd "$HOME/wikijs/build/wiki-src"
 sed -i 's/"dev": true/"dev": false/' package.json
 sed -i "s/\"version\": \"2.0.0\"/\"version\": \"${WIKI_VERSION}\"/" package.json
 sed -i "s/\"releaseDate\": \".*\"/\"releaseDate\": \"${WIKI_RELEASE_DATE}\"/" package.json
 docker build -f dev/build/Dockerfile -t "${WIKI_IMAGE}" .
 
-cd "$HOME/westgate/deploy"
+cd "$HOME/wikijs/deploy"
 docker compose up -d
 docker compose logs -f wiki
 ```
@@ -311,7 +311,7 @@ docker compose logs -f wiki
 Back up PostgreSQL:
 
 ```bash
-cd "$HOME/westgate/deploy"
+cd "$HOME/wikijs/deploy"
 docker compose exec db pg_dump -U "${POSTGRES_USER}" "${POSTGRES_DB}" > "wiki-$(date +%F).sql"
 ```
 
@@ -328,7 +328,7 @@ If the setup page says you are running an unstable development version:
 
 If the site starts but the theme is missing:
 
-- confirm `client/themes/westgate/theme.yml` exists in `wiki-src`
+- confirm `client/themes/wikijs/theme.yml` exists in `wiki-src`
 - rebuild the image after copying the theme
 - confirm the active theme setting is `westgate`
 
