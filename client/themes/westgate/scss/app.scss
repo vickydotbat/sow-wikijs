@@ -285,8 +285,14 @@ a {
     background: transparent !important;
   }
 
-  .v-toolbar__title {
-    font-family: $wg-font-ui !important;
+  .v-toolbar__title,
+  .v-toolbar__title .subheading {
+    @include display-heading;
+    color: $wg-text !important;
+    font-weight: 700 !important;
+    text-shadow: 0 1px 0 rgba(0,0,0,.9),0 0 10px rgba(104,32,76,.16);
+    color: rgb(207, 200, 187) !important;
+    font-size: 1rem;
   }
 
   .v-btn {
