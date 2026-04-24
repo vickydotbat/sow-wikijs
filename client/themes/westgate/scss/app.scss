@@ -211,6 +211,18 @@ a {
   }
 }
 
+/* Vuetify ships `.v-application .headline` / `.title` with Roboto, fixed rem size,
+   line-height, and letter-spacing (often `!important` in injected CSS). Strip that
+   so parent / Westgate globals define typography instead. */
+.v-application .headline,
+.v-application .title {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-family: $wg-font-display !important;
+  letter-spacing: inherit !important;
+  font-weight: inherit !important;
+}
+
 /* =========================================================
    APP CHROME
    ========================================================= */
