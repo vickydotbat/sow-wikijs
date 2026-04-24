@@ -154,7 +154,7 @@ mv "wiki-${WIKI_VERSION}" wiki-src
 Copy the Westgate theme into the stable source tree:
 
 ```bash
-rsync -a "$HOME/wikijs/customizations/client/themes/wikijs/" "$HOME/wikijs/build/wiki-src/client/themes/wikijs/"
+rsync -a "$HOME/wikijs/customizations/client/themes/westgate/" "$HOME/wikijs/build/wiki-src/client/themes/westgate/"
 ```
 
 If this repository later carries additional production overrides outside the
