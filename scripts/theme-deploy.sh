@@ -13,8 +13,13 @@ ENV_FILE="${ENV_FILE:-${DEPLOY_DIR}/.env}"
 COMPOSE_FILE="${COMPOSE_FILE:-${DEPLOY_DIR}/docker-compose.yml}"
 SOURCE_THEME_DIR="${REPO_ROOT}/client/themes/${THEME_NAME}"
 TARGET_THEME_DIR="${BUILD_SRC_DIR}/client/themes/${THEME_NAME}"
+SOURCE_STATIC_DIR="${REPO_ROOT}/client/static"
+TARGET_STATIC_DIR="${BUILD_SRC_DIR}/client/static"
+SOURCE_FAVICON_DIR="${REPO_ROOT}/client/static/favicons"
+TARGET_FAVICON_DIR="${BUILD_SRC_DIR}/client/static/favicons"
 STATE_HASH_FILE="${STATE_DIR}/${THEME_NAME}.sha256"
 STATE_VERSION_FILE="${STATE_DIR}/wiki-version"
+
 
 log() {
   printf '[theme-deploy] %s\n' "$*"
@@ -39,12 +44,13 @@ require_dir() {
 
 theme_hash() {
   (
-    cd "$SOURCE_THEME_DIR"
-    find . -type f -print0 \
-      | sort -z \
-      | xargs -0 sha256sum \
-      | sha256sum \
-      | awk '{print $1}'
+    {
+      cd "$SOURCE_THEME_DIR"
+      find . -type f -print0 | sort -z | xargs -0 sha256sum
+
+      cd "$SOURCE_STATIC_DIR"
+      find favicon.ico browserconfig.xml manifest.json favicons -type f -print0 | sort -z | xargs -0 sha256sum
+    } | sha256sum | awk '{print $1}'
   )
 }
 
@@ -86,6 +92,11 @@ main() {
   require_file "$ENV_FILE"
   require_file "$COMPOSE_FILE"
   require_dir "$SOURCE_THEME_DIR"
+  require_dir "$SOURCE_STATIC_DIR"
+  require_dir "$SOURCE_FAVICON_DIR"
+  require_file "${SOURCE_STATIC_DIR}/favicon.ico"
+  require_file "${SOURCE_STATIC_DIR}/browserconfig.xml"
+  require_file "${SOURCE_STATIC_DIR}/manifest.json"
 
   set -a
   # shellcheck disable=SC1090
@@ -109,7 +120,7 @@ main() {
 
   if [ "$current_hash" != "$previous_hash" ]; then
     should_build='true'
-    log "Theme changes detected"
+    log "Theme or favicon changes detected"
   fi
 
   if ! docker image inspect "$WIKI_IMAGE" >/dev/null 2>&1; then
@@ -121,6 +132,12 @@ main() {
     log "Syncing ${THEME_NAME} theme into stable source tree"
     mkdir -p "$TARGET_THEME_DIR"
     rsync -a --delete "${SOURCE_THEME_DIR}/" "${TARGET_THEME_DIR}/"
+    mkdir -p "$TARGET_STATIC_DIR"
+    mkdir -p "$TARGET_FAVICON_DIR"
+    rsync -a "${SOURCE_STATIC_DIR}/favicon.ico" "${TARGET_STATIC_DIR}/favicon.ico"
+    rsync -a "${SOURCE_STATIC_DIR}/browserconfig.xml" "${TARGET_STATIC_DIR}/browserconfig.xml"
+    rsync -a "${SOURCE_STATIC_DIR}/manifest.json" "${TARGET_STATIC_DIR}/manifest.json"
+    rsync -a --delete "${SOURCE_FAVICON_DIR}/" "${TARGET_FAVICON_DIR}/"
 
     log "Building ${WIKI_IMAGE}"
     cd "$BUILD_SRC_DIR"
