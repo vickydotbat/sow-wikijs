@@ -37,6 +37,9 @@ $wg-font-ui: "Jost", Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial,
 $wg-font-display: "Cinzel", Georgia, "Times New Roman", serif;
 $wg-font-reading: "Jost", Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 
+$wg-read-max-width: 52rem;
+$wg-breadcrumbs-max-width: 51rem;
+
 $wg-velvet-panel: linear-gradient(
   100deg,
   rgba(42, 18, 34, 0.42) 0%,
@@ -126,9 +129,30 @@ body,
   font-family: $wg-font-ui !important;
 }
 
+/* MDI must win over global UI fonts (Jost !important on body / tables / captions). */
+.v-application .v-icon.mdi,
+.v-application .mdi::before,
+.v-application .v-icon.mdi::before {
+  font-family: "Material Design Icons", sans-serif !important;
+  font-style: normal !important;
+  font-weight: normal !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 ::selection {
   background: $wg-selection;
   color: #fff4dd;
+}
+
+@media only screen and (min-width: 960px) {
+  .v-application .v-footer {
+    padding-left: 0;
+  }
+}
+
+.breadcrumbs-container {
+  max-width: $wg-breadcrumbs-max-width !important;
 }
 
 /* =========================================================
@@ -140,6 +164,7 @@ h2,
 h3,
 h4,
 h5,
+.westgate-read-rail--toc h2,
 .page-col-sd h2,
 .v-toolbar__title,
 .contents-header,
@@ -155,13 +180,12 @@ h3 { font-size: 1.32rem; }
 
 p,
 li,
-td,
-th,
 label,
 .v-label,
 .caption,
 .subtitle-1,
-.subtitle-2 {
+.subtitle-2,
+.v-list-item__title {
   color: $wg-text-soft !important;
   font-family: $wg-font-reading !important;
 }
@@ -199,10 +223,19 @@ a {
   background: $wg-bg !important;
 }
 
-.v-app-bar,
-.v-toolbar,
-header,
-nav {
+/* Unqualified `.grey` matched Vuetify `color="grey … "` on toolbars, chips, and other
+   components (e.g. the editor asset manager), replacing intended surfaces with the wiki
+   background. Scope to page-chrome class stacks only, excluding those surfaces. */
+.v-application
+  .grey:not(.v-toolbar):not(.v-bottom-navigation):not(.v-btn):not(.v-chip) {
+  background-color: $wg-bg !important;
+  background: $wg-bg !important;
+  border-color: $wg-bg !important;
+}
+
+/* Only the primary app bar uses the Westgate sheen. Editor/admin toolbars (teal, grey, …)
+   rely on the `color` prop and would otherwise get an extra silk layer that washes them out. */
+.v-app-bar {
   background:
     $wg-silk-sheen,
     linear-gradient(to bottom, rgba(20, 18, 25, 0.96), rgba(16, 14, 20, 0.98)) !important;
@@ -216,8 +249,6 @@ nav {
 .nav-header .nav-header-inner,
 .nav-header .v-toolbar__content,
 .nav-header .v-toolbar__extension {
-  background:
-    linear-gradient(90deg, rgba(44, 18, 36, 0.34), rgba(17, 15, 22, 0.96) 34%, rgba(12, 11, 16, 0.98)) !important;
   border-color: rgba(194, 163, 90, 0.16) !important;
 }
 
@@ -284,7 +315,6 @@ nav {
   }
 
   .v-text-field.v-text-field--solo .v-input__slot {
-    min-height: 42px !important;
     background: rgba(10, 9, 13, 0.56) !important;
     border: 1px solid rgba(194, 163, 90, 0.16) !important;
     border-radius: 5px !important;
@@ -293,6 +323,22 @@ nav {
 
   .v-text-field.v-text-field--solo fieldset {
     border: 0 !important;
+  }
+
+  .v-text-field.v-text-field--solo input,
+  .v-text-field.v-text-field--solo textarea {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .v-text-field.v-text-field--solo input:focus,
+  .v-text-field.v-text-field--solo textarea:focus,
+  .v-text-field.v-text-field--solo.v-input--is-focused input {
+    border: 0 !important;
+    box-shadow: none !important;
+    outline: 0 !important;
   }
 }
 
@@ -306,6 +352,7 @@ header .title {
 .v-navigation-drawer,
 aside,
 .page-col-sd,
+.westgate-inline-nav.westgate-read-nav,
 .sidebar {
   background: #121015 !important;
   border-color: $wg-border !important;
@@ -385,8 +432,11 @@ aside .menu li,
 .page-block,
 .page-section {
   @include velvet-panel;
-  border-radius: 6px !important;
   color: $wg-text-soft !important;
+}
+
+.v-sheet {
+  border: 0 !important;
 }
 
 .v-card:hover,
@@ -398,6 +448,7 @@ aside .menu li,
 
 .westgate-theme {
   .page-col-sd .v-card:hover,
+  .westgate-read-rail--toc .v-card:hover:not(.page-toc-card),
   .comments-container:hover {
     @include velvet-panel;
   }
@@ -437,6 +488,12 @@ aside .menu li,
     height: 1px;
     background: linear-gradient(to right, transparent, rgba(194, 163, 90, 0.26), transparent);
   }
+}
+
+.westgate-meta-buttons.v-toolbar .v-toolbar__content {
+  gap: 1rem;
+  justify-content: center;
+  align-items: center;
 }
 
 /* =========================================================
@@ -578,16 +635,18 @@ li::marker {
 
 /* =========================================================
    FORMS / INPUTS
+   Vuetify outlined fields draw the notched `fieldset` — do not add a second border,
+   background, or inset shadow on `.v-input__slot` or the native `input` inside.
    ========================================================= */
 
 input,
 textarea,
 select,
-.v-input__slot,
-.v-text-field > .v-input__control > .v-input__slot,
-.v-textarea > .v-input__control > .v-input__slot,
-.v-select > .v-input__control > .v-input__slot,
-.v-autocomplete > .v-input__control > .v-input__slot {
+.v-text-field:not(.v-text-field--outlined) > .v-input__control > .v-input__slot,
+.v-textarea:not(.v-textarea--outlined) > .v-input__control > .v-input__slot,
+.v-select:not(.v-text-field--outlined) > .v-input__control > .v-input__slot,
+.v-autocomplete:not(.v-text-field--outlined) > .v-input__control > .v-input__slot,
+.v-combobox:not(.v-text-field--outlined) > .v-input__control > .v-input__slot {
   background: linear-gradient(to bottom, $wg-panel, $wg-panel-2) !important;
   border: 1px solid $wg-border !important;
   color: $wg-text !important;
@@ -595,6 +654,33 @@ select,
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.025),
     0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.v-text-field--outlined .v-input__slot,
+.v-textarea--outlined .v-input__slot,
+.v-select.v-text-field--outlined .v-input__slot,
+.v-combobox.v-text-field--outlined .v-input__slot,
+.v-autocomplete.v-text-field--outlined .v-input__slot {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.v-text-field--outlined .v-text-field__slot input,
+.v-text-field--outlined .v-text-field__slot textarea,
+.v-textarea--outlined .v-text-field__slot textarea,
+.v-select.v-text-field--outlined input,
+.v-combobox.v-text-field--outlined .v-text-field__slot input,
+.v-autocomplete.v-text-field--outlined .v-text-field__slot input,
+/* v-select / v-combobox / v-autocomplete place the control under `.v-select__slot`, not `.v-text-field__slot`. */
+.v-select.v-text-field--outlined .v-select__slot input,
+.v-combobox.v-text-field--outlined .v-select__slot input,
+.v-autocomplete.v-text-field--outlined .v-select__slot input {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
 }
 
 input::placeholder,
@@ -608,7 +694,6 @@ textarea::placeholder {
   color: $wg-text !important;
 }
 
-.v-input--is-focused .v-input__slot,
 input:focus,
 textarea:focus,
 select:focus {
@@ -616,6 +701,54 @@ select:focus {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.03),
     0 0 0 0.18rem rgba(194, 163, 90, 0.12) !important;
+}
+
+/* Outlined: focus is on the fieldset only — strip glow/border on the inner field. */
+.v-text-field--outlined .v-text-field__slot input:focus,
+.v-text-field--outlined .v-text-field__slot textarea:focus,
+.v-textarea--outlined .v-text-field__slot textarea:focus,
+.v-select.v-text-field--outlined input:focus,
+.v-combobox.v-text-field--outlined .v-text-field__slot input:focus,
+.v-text-field--outlined .v-text-field__slot input:active,
+.v-textarea--outlined .v-text-field__slot textarea:active,
+.v-select.v-text-field--outlined input:active,
+.v-combobox.v-text-field--outlined .v-select__slot input:focus,
+.v-combobox.v-text-field--outlined .v-select__slot input:active,
+.v-select.v-text-field--outlined .v-select__slot input:focus,
+.v-select.v-text-field--outlined .v-select__slot input:active,
+.v-autocomplete.v-text-field--outlined .v-select__slot input:focus,
+.v-autocomplete.v-text-field--outlined .v-select__slot input:active,
+.v-text-field--outlined .v-text-field__slot input,
+.v-text-field--outlined .v-text-field__slot textarea,
+.v-combobox.v-text-field--outlined .v-select__slot input,
+.v-select.v-text-field--outlined .v-select__slot input,
+.v-autocomplete.v-text-field--outlined .v-select__slot input {
+  box-shadow: none !important;
+  outline: none !important;
+  border: 0 !important;
+}
+
+/* Non-outlined: keep slot focus glow; outlined: strip inner slot so only the notch shows. */
+.v-text-field:not(.v-text-field--outlined).v-input--is-focused .v-input__slot,
+.v-textarea:not(.v-textarea--outlined).v-input--is-focused .v-input__slot,
+.v-select:not(.v-text-field--outlined).v-input--is-focused .v-input__slot,
+.v-autocomplete:not(.v-text-field--outlined).v-input--is-focused .v-input__slot,
+.v-combobox:not(.v-text-field--outlined).v-input--is-focused .v-input__slot {
+  border-color: rgba(194, 163, 90, 0.42) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 0 0 0.18rem rgba(194, 163, 90, 0.12) !important;
+}
+
+.v-text-field--outlined.v-input--is-focused .v-input__slot,
+.v-textarea--outlined.v-input--is-focused .v-input__slot,
+.v-select.v-text-field--outlined.v-input--is-focused .v-input__slot,
+.v-combobox.v-text-field--outlined.v-input--is-focused .v-input__slot,
+.v-autocomplete.v-text-field--outlined.v-input--is-focused .v-input__slot {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
 }
 
 /* =========================================================
@@ -642,6 +775,14 @@ select:focus {
   color: $wg-text-soft !important;
 }
 
+.page-content td,
+.page-content th,
+.markdown-body td,
+.markdown-body th {
+  color: $wg-text-soft !important;
+  font-family: $wg-font-reading !important;
+}
+
 .page-content h1,
 .page-content h2,
 .page-content h3,
@@ -660,7 +801,6 @@ blockquote,
 .markdown-body blockquote {
   background: rgba(35, 27, 23, 0.45) !important;
   border-left: 3px solid rgba(194, 163, 90, 0.35) !important;
-  border-radius: 6px !important;
   padding: 0.75rem 0.9rem !important;
   color: #d9cec0 !important;
 }
@@ -671,7 +811,6 @@ code,
   background: #1b171d !important;
   color: $wg-link-hover !important;
   padding: 0.12rem 0.35rem !important;
-  border-radius: 4px !important;
 }
 
 pre,
@@ -700,7 +839,6 @@ pre,
 .markdown-body img,
 .contents img {
   border: 1px solid rgba(194, 163, 90, 0.14);
-  border-radius: 6px;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
 }
 
@@ -709,7 +847,6 @@ pre,
 kbd {
   background: linear-gradient(to bottom, #211b23, #151219) !important;
   border: 1px solid rgba(194, 163, 90, 0.22) !important;
-  border-radius: 4px;
   color: $wg-link-hover !important;
   box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.55);
 }
@@ -723,9 +860,9 @@ kbd {
 .page-toc,
 .nav-toc,
 .contents-sidebar,
-.page-col-sd .v-card {
+.page-col-sd .v-card,
+.westgate-read-rail--toc .v-card {
   @include velvet-panel;
-  border-radius: 6px !important;
 }
 
 .toc a,
@@ -781,13 +918,16 @@ kbd {
    DIALOGS / MENUS
    ========================================================= */
 
+.v-sheet.v-card {
+  border-radius: 0 !important;
+}
+
 .v-menu__content,
 .v-dialog,
 .v-dialog > .v-card,
 .v-sheet.v-card,
 .v-menu__content .v-list {
   @include velvet-panel;
-  border-radius: 6px !important;
   color: $wg-text-soft !important;
 }
 
@@ -834,7 +974,6 @@ hr,
 .admin-area .v-card,
 .page-admin .v-card {
   @include velvet-panel;
-  border-radius: 6px !important;
 }
 
 .login-screen .headline,
@@ -842,6 +981,75 @@ hr,
 .admin-screen .headline {
   @include display-heading;
   color: $wg-text !important;
+}
+
+/* =========================================================
+   ADMIN (/a) — grid, chips, toolbars
+   Westgate globals must not collapse Vuetify admin layout or chips.
+   ========================================================= */
+
+.v-application.admin {
+  /* Legacy v-layout grid: explicit flex-basis if a-la-carte Vuetify omitted grid CSS */
+  .container .layout.row.wrap > .flex.xs12 {
+    flex: 0 1 100% !important;
+    flex-basis: 100% !important;
+    max-width: 100% !important;
+  }
+
+  @media (min-width: 960px) {
+    .container .layout.row.wrap > .flex.md6 {
+      flex: 0 1 50% !important;
+      flex-basis: 50% !important;
+      max-width: 50% !important;
+    }
+  }
+
+  @media (min-width: 1264px) {
+    .container .layout.row.wrap > .flex.lg4 {
+      flex: 0 1 33.3333333333% !important;
+      flex-basis: 33.3333333333% !important;
+      max-width: 33.3333333333% !important;
+    }
+  }
+
+  @media (min-width: 1904px) {
+    .container .layout.row.wrap > .flex.xl3 {
+      flex: 0 1 25% !important;
+      flex-basis: 25% !important;
+      max-width: 25% !important;
+    }
+  }
+
+  .container .layout.row.wrap > .flex.d-flex {
+    display: flex !important;
+    min-width: 0;
+  }
+
+  .container .layout.row.wrap > .flex.d-flex > .v-card {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .v-toolbar.grey {
+    background: rgba(18, 16, 22, 0.92) !important;
+  }
+
+  .v-chip.v-size--x-small,
+  .v-chip.v-size--small {
+    background: $wg-chip !important;
+    border: 1px solid rgba(194, 163, 90, 0.24) !important;
+    color: $wg-link !important;
+  }
+
+  .v-chip.v-size--x-small .v-chip__content,
+  .v-chip.v-size--small .v-chip__content {
+    color: $wg-link !important;
+  }
+
+  .v-chip .caption.grey--text {
+    color: rgba(224, 208, 168, 0.92) !important;
+  }
 }
 
 .login {
@@ -895,7 +1103,6 @@ hr,
 
   &-container {
     @include velvet-panel;
-    border-radius: 6px;
     padding: 14px;
   }
 
@@ -932,6 +1139,419 @@ hr,
 .source {
   background: $wg-bg !important;
   color: $wg-text-soft !important;
+}
+
+/* -------------------------------------------------------------------------
+   Editor — Assets modal (`.editor-modal-media` on a root `v-card`)
+   Global `velvet-panel` on all `.v-card` uses a gradient + inset “silk” shadows that
+   (1) override a semi-transparent `background-color` in the component,
+   (2) look like a pale band on toolbars, and
+   (3) read as low-contrast/see-through over the editor UI. Use solid panels, plain
+   elevation shadows, comfortable padding, and no velvet hover on this overlay.
+   ------------------------------------------------------------------------- */
+.v-card.editor-modal-media,
+.editor .v-card.editor-modal-media {
+  z-index: 200 !important;
+  background: $wg-bg !important;
+  background-color: $wg-bg !important;
+  background-image: none !important;
+  border: 1px solid $wg-velvet-border !important;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 24px 56px rgba(0, 0, 0, 0.55) !important;
+}
+
+.v-card.editor-modal-media:hover,
+.editor .v-card.editor-modal-media:hover {
+  background: $wg-bg !important;
+  background-image: none !important;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 24px 56px rgba(0, 0, 0, 0.55) !important;
+}
+
+.editor-modal-media {
+  .container,
+  .v-container {
+    padding: 1.5rem 1.75rem 1.75rem !important;
+  }
+
+  .v-card {
+    background: $wg-panel !important;
+    background-color: $wg-panel !important;
+    background-image: none !important;
+    border: 1px solid $wg-velvet-border !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.38) !important;
+  }
+
+  .v-card:hover {
+    background: $wg-panel-2 !important;
+    background-image: none !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  .v-card__text {
+    padding: 1.25rem 1.35rem 1.4rem !important;
+  }
+
+  .v-card__text > .d-flex:not(:last-child) {
+    margin-bottom: 0.75rem;
+  }
+
+  .layout .flex {
+    padding: 0.45rem 0.55rem;
+  }
+
+  /* Filled / colored actions: global Westgate sets `.v-btn { background: transparent }`. */
+  .v-btn:not(.v-btn--text):not(.v-btn--outlined).teal,
+  .v-btn:not(.v-btn--text):not(.v-btn--outlined).teal.darken-1,
+  .v-btn:not(.v-btn--text):not(.v-btn--outlined).teal.darken-2 {
+    background: #00695c !important;
+    border-color: #00695c !important;
+    color: #fff4f0 !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28) !important;
+  }
+
+  .v-btn:not(.v-btn--text):not(.v-btn--outlined).red,
+  .v-btn:not(.v-btn--text):not(.v-btn--outlined).red.darken-2,
+  .v-btn:not(.v-btn--text):not(.v-btn--outlined).red.darken-3,
+  .v-btn:not(.v-btn--text):not(.v-btn--outlined).red.darken-4 {
+    background: #b71c1c !important;
+    border-color: #b71c1c !important;
+    color: #ffebef !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28) !important;
+  }
+
+  .v-data-table th,
+  .v-data-table td {
+    padding-left: 0.9rem !important;
+    padding-right: 0.9rem !important;
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+
+  .v-data-table {
+    border-radius: 4px;
+    margin-top: 0.5rem;
+  }
+
+  /* Section + path toolbars: stock Vuetify `teal` / `white` / `grey lighten-*` are too loud
+     for Westgate. Use dark panels, muted gold titles, and no bright mint or white strip. */
+  /* Vuetify injects e.g. `.v-application .teal.lighten-5 { border-color: #e0f2f1 !important; }` —
+     higher specificity is required so the mint “frame” is replaced with Westgate line color. */
+  .v-application .editor-modal-media .v-toolbar,
+  .v-application .editor-modal-media .v-toolbar.teal,
+  .v-application .editor-modal-media .v-toolbar.teal.lighten-3,
+  .v-application .editor-modal-media .v-toolbar.teal.lighten-4,
+  .v-application .editor-modal-media .v-toolbar.teal.lighten-5 {
+    background: $wg-panel-2 !important;
+    background-image: none !important;
+    background-repeat: no-repeat !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    border-bottom: 1px solid $wg-velvet-border !important;
+    color: $wg-text-soft !important;
+  }
+
+  .v-toolbar .v-toolbar__content {
+    padding: 0 0.8rem 0 0.9rem !important;
+  }
+
+  .v-toolbar.teal,
+  .v-toolbar.primary,
+  .v-application .editor-modal-media .v-toolbar.teal,
+  .v-application .editor-modal-media .v-toolbar.teal.lighten-3,
+  .v-application .editor-modal-media .v-toolbar.teal.lighten-4,
+  .v-application .editor-modal-media .v-toolbar.teal.lighten-5 {
+    background: linear-gradient(180deg, #1a1720 0%, #111018 100%) !important;
+    color: $wg-gold !important;
+  }
+
+  .v-toolbar.teal .body-2,
+  .v-toolbar.teal .white--text,
+  .v-toolbar.teal .teal--text,
+  .v-toolbar.teal .teal--text.text--lighten-3,
+  .v-toolbar.primary .body-2 {
+    color: $wg-gold !important;
+  }
+
+  .v-toolbar.teal .v-icon,
+  .v-toolbar.primary .v-icon,
+  .v-toolbar.teal .v-btn--icon .v-icon {
+    color: $wg-gold !important;
+  }
+
+  .v-toolbar.white,
+  .v-toolbar.grey,
+  .v-toolbar.blue-grey {
+    background: $wg-panel-2 !important;
+    color: $wg-text-soft !important;
+  }
+
+  .v-toolbar .body-2,
+  .v-toolbar .grey--text,
+  .v-toolbar .grey--text.text--lighten-1,
+  .v-toolbar .grey--text.text--darken-1 {
+    color: $wg-text-soft !important;
+  }
+
+  .v-toolbar .v-btn {
+    /* Avoid global transparent `.v-btn` in this panel feeling flush against edges. */
+    margin-left: 0.1rem;
+    margin-right: 0.1rem;
+  }
+
+  /* Outlined v-select / v-text-field: parent `v-card` can be `theme--light` while the panel
+     is still Westgate-dark, so Vuetify sets `.theme--light .v-select__selection--comma` to
+     near-black — illegible. Force light-on-dark for selection, label, and placeholder. */
+  .v-text-field,
+  .v-select,
+  .v-input {
+    .v-label {
+      color: $wg-text-muted !important;
+    }
+
+    .v-label--active,
+    &.v-input--is-focused .v-label,
+    &.v-input--is-label-active .v-label {
+      color: $wg-gold !important;
+    }
+
+    .v-select__selection,
+    .v-select__selection--comma,
+    .v-text-field__slot input,
+    input {
+      color: $wg-text !important;
+    }
+  }
+
+  .theme--light.v-select,
+  .theme--light.v-text-field,
+  .v-select.theme--light,
+  .v-text-field.theme--light {
+    .v-select__selection--comma,
+    .v-select__selection,
+    .v-text-field__slot input,
+    input,
+    textarea {
+      color: $wg-text !important;
+    }
+  }
+
+  .v-text-field input::placeholder,
+  .v-select .v-select__slot input::placeholder,
+  .v-text-field .v-text-field__slot input::placeholder {
+    color: $wg-text-muted !important;
+    opacity: 1 !important;
+  }
+
+  .v-text-field--outlined fieldset,
+  .v-select.v-text-field--outlined fieldset {
+    border-color: $wg-velvet-border !important;
+  }
+
+  .v-text-field--outlined.v-input--is-focused fieldset,
+  .v-select.v-text-field--outlined.v-input--is-focused fieldset {
+    border-color: rgba(194, 163, 90, 0.45) !important;
+  }
+
+  .filepond--root {
+    .filepond--panel-root {
+      background-color: rgba(20, 18, 25, 0.95) !important;
+    }
+
+    .filepond--drop-label,
+    .filepond--drop-label label {
+      color: $wg-text-soft !important;
+    }
+
+    .filepond--label-action {
+      color: $wg-link !important;
+      text-decoration: underline;
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Editor — Page properties dialog (`content-class` on v-dialog in
+   `editor-modal-properties.vue`)
+   Replaces the stock white / blue tab row and Vuetify greys with Westgate panels,
+   and fixes light-theme text tokens on dark surfaces.
+   ------------------------------------------------------------------------- */
+.v-dialog.editor-modal-properties,
+.v-application .v-dialog.editor-modal-properties {
+  & > .dialog-header,
+  & .dialog-header {
+    background: linear-gradient(180deg, #1c1622 0%, #121018 100%) !important;
+    background-image: none !important;
+    border-bottom: 1px solid $wg-velvet-border !important;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35) !important;
+  }
+
+  .v-card {
+    background: $wg-bg !important;
+    background-color: $wg-bg !important;
+    background-image: none !important;
+    color: $wg-text-soft !important;
+  }
+
+  .v-card__text {
+    background: $wg-panel !important;
+    color: $wg-text-soft !important;
+  }
+
+  .v-card__text.grey,
+  .v-card__text.grey--text {
+    background: $wg-panel-2 !important;
+    color: $wg-text-soft !important;
+  }
+
+  .v-tabs {
+    background: transparent !important;
+  }
+
+  .v-tabs-bar {
+    background: linear-gradient(180deg, #1a1720 0%, #0f0e14 100%) !important;
+    border-bottom: 1px solid $wg-velvet-border !important;
+  }
+
+  .v-tabs-items,
+  .v-tab-item {
+    background: transparent !important;
+  }
+
+  .v-tabs-slider,
+  .v-tabs__slider,
+  .v-tabs__slider-pressed {
+    background: $wg-gold !important;
+  }
+
+  .v-tabs .v-tab:not(:disabled),
+  .v-tab:not(:disabled) {
+    color: $wg-text-muted !important;
+  }
+
+  .v-tabs .v-tab--active,
+  .v-tab--active {
+    color: $wg-gold !important;
+  }
+
+  .v-tab:disabled,
+  .v-tab--disabled {
+    color: rgba(154, 144, 134, 0.4) !important;
+  }
+
+  .v-divider {
+    border-color: $wg-velvet-border !important;
+    background-color: transparent !important;
+  }
+
+  .v-card__text .overline,
+  .v-card__text .subtitle-1,
+  .v-card__text--primary .overline,
+  .overline,
+  .dialog-header .subtitle-1,
+  .subtitle-1 {
+    color: $wg-gold !important;
+  }
+
+  .v-text-field,
+  .v-select,
+  .v-combobox,
+  .v-input {
+    .v-label {
+      color: $wg-text-muted !important;
+    }
+
+    .v-label--active,
+    &.v-input--is-focused .v-label,
+    &.v-input--is-label-active .v-label {
+      color: $wg-gold !important;
+    }
+
+    .v-select__selection,
+    .v-select__selection--comma,
+    .v-text-field__slot input,
+    input,
+    .v-text-field__slot,
+    .v-text-field__slot * {
+      color: $wg-text !important;
+    }
+  }
+
+  .theme--light.v-select,
+  .theme--light.v-text-field,
+  .v-select.theme--light,
+  .v-text-field.theme--light,
+  .v-combobox.theme--light,
+  .v-input.theme--light,
+  .v-input--checkbox.theme--light {
+    .v-select__selection--comma,
+    .v-select__selection,
+    .v-text-field__slot input,
+    input,
+    textarea {
+      color: $wg-text !important;
+    }
+  }
+
+  .v-messages,
+  .v-messages__message,
+  .v-messages__message *,
+  .v-messages--hint,
+  .v-input__icon .v-messages * {
+    color: $wg-text-muted !important;
+  }
+
+  .v-text-field--outlined fieldset,
+  .v-select.v-text-field--outlined fieldset,
+  .v-combobox.v-text-field--outlined fieldset {
+    border-color: $wg-velvet-border !important;
+  }
+
+  .v-text-field--outlined.v-input--is-focused fieldset,
+  .v-select.v-text-field--outlined.v-input--is-focused fieldset,
+  .v-combobox.v-text-field--outlined.v-input--is-focused fieldset {
+    border-color: rgba(194, 163, 90, 0.45) !important;
+  }
+
+  .v-input--is-disabled * {
+    color: rgba(185, 178, 166, 0.45) !important;
+  }
+
+  .v-switch,
+  .v-input--checkbox {
+    .v-label,
+    .v-messages * {
+      color: $wg-text-muted !important;
+    }
+  }
+
+  .v-chip--label,
+  .v-chip[label] {
+    background: $wg-panel-3 !important;
+    color: $wg-gold !important;
+    border-color: $wg-velvet-border !important;
+  }
+
+  .v-chip .v-icon {
+    color: $wg-gold !important;
+  }
+
+  .v-card__text .v-counter,
+  .v-input__icon .v-icon,
+  .v-text-field--outlined .v-input__append-inner .v-icon {
+    color: $wg-gold !important;
+  }
+
+  .editor-props-codeeditor-title {
+    color: $wg-gold !important;
+    background: $wg-bg !important;
+  }
+
+  .editor-props-codeeditor-hint {
+    color: $wg-text-muted !important;
+  }
 }
 
 .editor-markdown {
@@ -1036,6 +1656,152 @@ hr,
 }
 
 /* =========================================================
+   VISUAL EDITOR (CKEDITOR) — WESTGATE SURFACES
+   Stock CKEditor uses light grey “paper”; Westgate typography is
+   light-on-dark like the read view. Align surfaces to the page panel
+   so WYSIWYG type stays readable without changing fonts or colors.
+   ========================================================= */
+
+.editor-ckeditor {
+  background: transparent !important;
+
+  .ck.ck-toolbar {
+    background:
+      $wg-silk-sheen,
+      linear-gradient(180deg, rgba(24, 21, 30, 0.98), rgba(14, 12, 18, 0.99)) !important;
+    border: 0 !important;
+    border-bottom: 1px solid $wg-velvet-border !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02) !important;
+    color: $wg-text-soft !important;
+  }
+
+  .ck.ck-toolbar .ck-toolbar__separator {
+    background: rgba(194, 163, 90, 0.12) !important;
+  }
+
+  .ck.ck-toolbar .ck-icon {
+    color: rgba(216, 200, 160, 0.82) !important;
+  }
+
+  .ck.ck-toolbar .ck-button:not(.ck-disabled):hover,
+  .ck.ck-toolbar a.ck-button:not(.ck-disabled):hover {
+    background: rgba(194, 163, 90, 0.08) !important;
+  }
+
+  .ck.ck-toolbar .ck-button:not(.ck-disabled):hover .ck-icon,
+  .ck.ck-toolbar a.ck-button:not(.ck-disabled):hover .ck-icon {
+    color: $wg-gold !important;
+  }
+
+  .ck.ck-toolbar .ck-on {
+    background: rgba(194, 163, 90, 0.1) !important;
+    color: $wg-text !important;
+  }
+
+  .ck.ck-toolbar .ck-on .ck-icon {
+    color: $wg-gold !important;
+  }
+
+  > .ck.ck-editor__editable {
+    @include velvet-panel;
+    border-radius: 5px !important;
+    color: inherit;
+
+    &.ck.ck-editor__editable:not(.ck-editor__nested-editable).ck-focused {
+      border-color: rgba(194, 163, 90, 0.42) !important;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.025),
+        inset 0 0 34px rgba(96, 32, 68, 0.1),
+        0 0 0 0.18rem rgba(194, 163, 90, 0.12) !important;
+    }
+
+    &.ck .ck-editor__nested-editable,
+    .ck-widget.table td.ck-editor__nested-editable,
+    .ck-widget.table th.ck-editor__nested-editable {
+      background: rgba(18, 16, 22, 0.88) !important;
+      background-image: none !important;
+    }
+
+    &.ck .ck-editor__nested-editable.ck-editor__nested-editable_focused,
+    &.ck .ck-editor__nested-editable:focus,
+    .ck-widget.table td.ck-editor__nested-editable.ck-editor__nested-editable_focused,
+    .ck-widget.table th.ck-editor__nested-editable.ck-editor__nested-editable_focused {
+      background: rgba(26, 22, 31, 0.96) !important;
+      background-image: none !important;
+      border-color: rgba(194, 163, 90, 0.15) !important;
+    }
+  }
+
+  &-sysbar {
+    background: #1b1920 !important;
+    border-top: 1px solid rgba(194, 163, 90, 0.12) !important;
+    color: $wg-text-muted !important;
+  }
+}
+
+/* CKEditor 5 floating UI (dropdowns, balloons) is often rendered outside
+   `.editor-ckeditor` (e.g. on body). Westgate light-on-dark globals + stock
+   white panels made lists unreadable — theme panels and labels here. */
+.ck.ck-balloon-panel,
+.ck.ck-dropdown__panel {
+  @include velvet-panel;
+  border-radius: 4px !important;
+  color: $wg-text-soft !important;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.02) !important;
+}
+
+.ck.ck-balloon-panel .ck.ck-list,
+.ck.ck-dropdown__panel .ck.ck-list {
+  background: transparent !important;
+}
+
+.ck.ck-list__item {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: $wg-text-soft !important;
+}
+
+.ck.ck-list__item:hover:not(.ck-disabled),
+.ck.ck-list__item.ck-on {
+  background: rgba(194, 163, 90, 0.12) !important;
+  color: $wg-text !important;
+}
+
+.ck.ck-balloon-panel .ck-button,
+.ck.ck-dropdown__panel .ck-button {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: $wg-text-soft !important;
+}
+
+.ck.ck-balloon-panel .ck-button:hover:not(.ck-disabled),
+.ck.ck-dropdown__panel .ck-button:hover:not(.ck-disabled) {
+  background: rgba(194, 163, 90, 0.1) !important;
+  color: $wg-text !important;
+}
+
+.ck.ck-balloon-panel .ck-button__label,
+.ck.ck-dropdown__panel .ck-button__label {
+  color: inherit !important;
+}
+
+.ck.ck-balloon-panel .ck-input__input,
+.ck.ck-dropdown__panel .ck-input__input,
+.ck.ck-balloon-panel input.ck-input__input,
+.ck.ck-dropdown__panel input.ck-input__input {
+  background: rgba(12, 10, 14, 0.85) !important;
+  border: 1px solid $wg-border !important;
+  color: $wg-text-soft !important;
+}
+
+.ck.ck-balloon-panel .ck.ck-labeled-field-view__status,
+.ck.ck-dropdown__panel .ck.ck-labeled-field-view__status {
+  color: $wg-text-muted !important;
+}
+
+/* =========================================================
    OPTIONAL WESTGATE NOTE BLOCK
    ========================================================= */
 
@@ -1046,7 +1812,6 @@ hr,
   padding: 10px 14px;
   border-left: 3px solid $wg-gold;
   background: rgba(20, 18, 25, 0.6);
-  border-radius: 6px;
   font-size: 16px;
   color: $wg-text-soft;
 }
@@ -1070,7 +1835,9 @@ hr,
 @media (max-width: 767.98px) {
   .v-navigation-drawer,
   aside,
-  .page-col-sd {
+  .page-col-sd,
+  .westgate-inline-nav.westgate-read-nav,
+  .westgate-read-rail--toc {
     box-shadow: none !important;
   }
 
@@ -1088,7 +1855,7 @@ hr,
 .westgate-theme {
   .v-main {
     background:
-      linear-gradient(120deg, rgba(84, 28, 62, 0.08), transparent 34%),
+      linear-gradient(120deg, rgba(167, 151, 160, 0.08), transparent 34%),
       $wg-bg !important;
   }
 
@@ -1106,9 +1873,129 @@ hr,
   .westgate-page-body {
     background: transparent !important;
     padding: 0.75rem 1rem 2rem !important;
+  }
 
-    > .layout {
-      align-items: flex-start;
+  .westgate-reading-shell-inner {
+    box-sizing: border-box;
+    margin-left: auto;
+    margin-right: auto;
+    max-width: min(96vw, 1420px);
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
+    width: 100%;
+  }
+
+  .westgate-reading-shell--crumbs .westgate-reading-shell-inner {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .westgate-reading-row {
+    align-items: flex-start;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0.85rem 1.15rem;
+    justify-content: center;
+    width: 100%;
+
+    &.is-rtl {
+      flex-direction: row-reverse;
+    }
+
+    @media (max-width: 1263.98px) {
+      flex-wrap: wrap;
+
+      .westgate-read-main {
+        flex: 1 1 100%;
+        max-width: none;
+      }
+    }
+  }
+
+  .westgate-read-main.page-col-content {
+    flex: 1 1 $wg-read-max-width;
+    max-width: $wg-read-max-width;
+    min-width: 0;
+
+    .westgate-reading-row--toc-off & {
+      flex: 1 1 auto;
+      max-width: $wg-read-max-width;
+    }
+  }
+
+  .westgate-inline-nav.westgate-read-nav {
+    background:
+      linear-gradient(to bottom, #151219, #100e14 72%, #0d0b10) !important;
+    border: 1px solid rgba(194, 163, 90, 0.09);
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    overflow: hidden;
+    padding: 0;
+    width: min(15.75rem, 26vw);
+  }
+
+  .westgate-read-rail--toc {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    overflow: visible;
+    padding-right: 0 !important;
+    width: min(15.75rem, 26vw);
+  }
+
+  // Reserves rail width when this page has no ToC entries (empty block, same column as the ToC card)
+  .westgate-read-rail__toc-placeholder {
+    box-sizing: border-box;
+    flex-shrink: 0;
+    min-height: 0;
+    pointer-events: none;
+    width: 100%;
+  }
+
+  .westgate-page-meta {
+    @include velvet-panel;
+    border-radius: 0 !important;
+    margin-bottom: 1.35rem !important;
+    margin-top: 0 !important;
+    overflow: hidden;
+
+    .page-comments-card:first-child {
+      border-top: 0 !important;
+    }
+
+    > .v-sheet.v-card.meta-card,
+    > .v-card.meta-card {
+      box-sizing: border-box !important;
+      margin-bottom: 0 !important;
+      padding: 1rem 0;
+    }
+
+    .westgate-meta-section {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      padding: 0 !important;
+    }
+
+    .westgate-meta-section > .westgate-card-title {
+      margin-bottom: 0;
+      padding-top: 0;
+    }
+
+    .page-author-card .page-author-card-date {
+      display: block;
+    }
+
+    .page-shortcuts-card .westgate-shortcuts-toolbar.v-toolbar {
+      margin: 0 !important;
+    }
+
+    .page-shortcuts-card .westgate-shortcuts-toolbar .v-toolbar__content {
+      min-height: 52px !important;
+      padding-top: 0.85rem !important;
+      padding-bottom: 0.85rem !important;
     }
   }
 
@@ -1190,21 +2077,24 @@ hr,
     }
   }
 
+  .westgate-read-rail--toc,
   .page-col-sd {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
-    padding-right: 1rem !important;
+    padding-right: 0 !important;
   }
 
-  .page-toc-card,
+  .westgate-read-nav {
+    padding-right: 0 !important;
+  }
+
   .page-tags-card,
   .page-comments-card,
   .page-author-card,
   .page-shortcuts-card {
     background: transparent !important;
     border: 0 !important;
-    border-top: 1px solid rgba(194, 163, 90, 0.12) !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     overflow: hidden;
@@ -1215,19 +2105,23 @@ hr,
     }
   }
 
-  .page-col-content > .contents {
+  .westgate-read-main.page-col-content > .contents {
     @include velvet-panel;
     border-radius: 0 !important;
-    border-left: 0 !important;
-    border-right: 0 !important;
-    margin-bottom: 1.35rem;
     margin-top: 0;
     min-height: 34vh;
     padding: 1.55rem 1.55rem !important;
   }
 
   .page-toc-card {
+    @include velvet-panel-hover;
     border-top: 0 !important;
+    overflow: hidden;
+
+    &:hover,
+    &:focus-within {
+      @include velvet-panel-hover;
+    }
 
     .v-list {
       padding: 0.45rem !important;
@@ -1322,7 +2216,6 @@ hr,
 
   .comments-container {
     @include velvet-panel;
-    border-radius: 6px;
     margin-top: 2rem;
     overflow: hidden;
   }
@@ -1350,8 +2243,9 @@ hr,
 
   .westgate-footer {
     background: linear-gradient(to bottom, rgba(20, 18, 25, 0.94), rgba(15, 13, 19, 0.98)) !important;
-    border-top: 1px solid rgba(194, 163, 90, 0.14);
     color: $wg-text-muted !important;
+    border: 0 !important;
+    border-radius: 0 !important;
 
     a {
       color: $wg-link !important;
@@ -1371,14 +2265,16 @@ hr,
   h5,
   h6 {
     position: relative;
+    padding-right: 1.1rem;
 
     .toc-anchor {
       color: rgba(194, 163, 90, 0.7) !important;
       text-decoration: none !important;
       opacity: 0.72;
       position: absolute;
-      left: -0.78em;
-      width: 0.7em;
+      right: 0;
+      line-height: 1;
+      width: auto;
       transition: opacity 0.16s ease, color 0.16s ease;
     }
 
