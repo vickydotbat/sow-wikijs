@@ -293,7 +293,7 @@ cd "$HOME/wikijs/build"
 rm -rf wiki-src
 curl -fsSL "https://github.com/Requarks/wiki/archive/refs/tags/v${WIKI_VERSION}.tar.gz" | tar -xz
 mv "wiki-${WIKI_VERSION}" wiki-src
-rsync -a "$HOME/wikijs/customizations/client/themes/wikijs/" "$HOME/wikijs/build/wiki-src/client/themes/wikijs/"
+rsync -a "$HOME/wikijs/customizations/client/themes/westgate/" "$HOME/wikijs/build/wiki-src/client/themes/westgate/"
 
 cd "$HOME/wikijs/build/wiki-src"
 sed -i 's/"dev": true/"dev": false/' package.json
