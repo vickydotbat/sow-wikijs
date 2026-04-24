@@ -10,6 +10,7 @@ BUILD_DIR="${BUILD_DIR:-${WIKI_HOME}/build}"
 BUILD_SRC_DIR="${BUILD_DIR}/wiki-src"
 STATE_DIR="${BUILD_DIR}/.theme-deploy"
 ENV_FILE="${ENV_FILE:-${DEPLOY_DIR}/.env}"
+COMPOSE_FILE="${COMPOSE_FILE:-${DEPLOY_DIR}/docker-compose.yml}"
 SOURCE_THEME_DIR="${REPO_ROOT}/client/themes/${THEME_NAME}"
 TARGET_THEME_DIR="${BUILD_SRC_DIR}/client/themes/${THEME_NAME}"
 STATE_HASH_FILE="${STATE_DIR}/${THEME_NAME}.sha256"
@@ -83,6 +84,7 @@ main() {
   require_command sed
 
   require_file "$ENV_FILE"
+  require_file "$COMPOSE_FILE"
   require_dir "$SOURCE_THEME_DIR"
 
   set -a
@@ -93,6 +95,7 @@ main() {
   : "${WIKI_VERSION:?WIKI_VERSION must be set in ${ENV_FILE}}"
   : "${WIKI_RELEASE_DATE:?WIKI_RELEASE_DATE must be set in ${ENV_FILE}}"
   : "${WIKI_IMAGE:?WIKI_IMAGE must be set in ${ENV_FILE}}"
+  : "${WIKI_HTTP_PORT:?WIKI_HTTP_PORT must be set in ${ENV_FILE}}"
 
   ensure_build_tree
   patch_release_metadata
@@ -127,9 +130,8 @@ main() {
     log "No theme changes detected; skipping image rebuild"
   fi
 
-  log "Starting Wiki.js stack"
-  cd "$DEPLOY_DIR"
-  docker compose up -d
+  log "Starting Wiki.js stack on host port ${WIKI_HTTP_PORT}"
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 }
 
 main "$@"

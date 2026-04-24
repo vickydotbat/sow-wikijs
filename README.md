@@ -209,6 +209,13 @@ What it does:
 - rebuilds when the theme changed, the image is missing, or `WIKI_VERSION` changed
 - finishes with `docker compose up -d`
 
+The helper calls Compose with explicit paths:
+
+- `docker compose --env-file "$HOME/wikijs/deploy/.env" -f "$HOME/wikijs/deploy/docker-compose.yml" up -d`
+
+That avoids a common trap where Compose picks up variables from the wrong
+directory or from an already-exported shell variable.
+
 The change detection is intentionally scoped to theme-only updates. If you later
 start carrying production overrides outside `client/themes/westgate`, either
 extend the script to hash those paths too or do a full rebuild manually.
@@ -367,3 +374,9 @@ If Wiki.js cannot connect to PostgreSQL:
 - check `docker compose logs wiki`
 - verify `POSTGRES_*` values in `.env`
 - verify the `wiki` service still uses `DB_HOST=db`
+
+If Compose still binds the wrong HTTP port:
+
+- run `docker compose --env-file "$HOME/wikijs/deploy/.env" -f "$HOME/wikijs/deploy/docker-compose.yml" config | rg -n "ports|3000|3055"`
+- check whether your shell already exported `WIKI_HTTP_PORT`; shell variables override `.env`
+- run `unset WIKI_HTTP_PORT` before manual Compose commands if needed
