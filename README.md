@@ -98,6 +98,15 @@ WIKI_HTTP_PORT=3000
 EOF
 ```
 
+Important:
+
+- `POSTGRES_PASSWORD` is only used by the `postgres` container when it first
+  initializes an empty data directory.
+- If the `db-data` volume already exists, changing `POSTGRES_PASSWORD` in `.env`
+  does not rotate the existing database user's password.
+- If you change database credentials later, either update the PostgreSQL user
+  inside the running database or recreate the database volume and reinitialize.
+
 Create `docker-compose.yml`:
 
 ```yaml
@@ -294,10 +303,96 @@ Inspect the theming row:
 SELECT key, value FROM settings WHERE key = 'theming';
 ```
 
+If it still says `"theme":"default"`, switch it to `westgate`:
+
+```sql
+UPDATE settings
+SET value = jsonb_set(value::jsonb, '{theme}', '"westgate"')::json
+WHERE key = 'theming';
+```
+
+Verify:
+
+```sql
+SELECT key, value FROM settings WHERE key = 'theming';
+```
+
+Exit `psql`:
+
+```sql
+\q
+```
+
 Make sure the JSON `theme` property is `westgate`, then restart Wiki.js:
 
 ```bash
-docker compose restart wiki
+cd "$HOME/wikijs/deploy"
+docker compose --env-file .env -f docker-compose.yml restart wiki
+docker compose --env-file .env -f docker-compose.yml logs -f wiki
+```
+
+## Assign Administrators From PostgreSQL
+
+If the admin UI refuses to assign a user to the `Administrators` group, you can
+do it directly in PostgreSQL.
+
+Connect to the database:
+
+```bash
+cd "$HOME/wikijs/deploy"
+docker compose --env-file .env -f docker-compose.yml exec db psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}"
+```
+
+List users:
+
+```sql
+SELECT id, email, name FROM users ORDER BY id;
+```
+
+List groups:
+
+```sql
+SELECT id, name, permissions FROM groups ORDER BY id;
+```
+
+On a standard Wiki.js setup, the `Administrators` group is `id = 1`.
+
+Add a user to that group:
+
+```sql
+INSERT INTO "userGroups" ("userId", "groupId")
+SELECT USER_ID_HERE, 1
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM "userGroups"
+  WHERE "userId" = USER_ID_HERE
+    AND "groupId" = 1
+);
+```
+
+Verify the membership:
+
+```sql
+SELECT u.email, g.name
+FROM "userGroups" ug
+JOIN users u ON u.id = ug."userId"
+JOIN groups g ON g.id = ug."groupId"
+WHERE u.id = USER_ID_HERE;
+```
+
+Then log out and back in as that user. If the permissions still do not show up
+immediately, restart Wiki.js:
+
+```bash
+docker compose --env-file .env -f docker-compose.yml restart wiki
+```
+
+To remove administrator access later:
+
+```sql
+DELETE FROM "userGroups"
+WHERE "userId" = USER_ID_HERE
+  AND "groupId" = 1;
 ```
 
 ## Theme-Only Updates
@@ -374,6 +469,10 @@ If Wiki.js cannot connect to PostgreSQL:
 - check `docker compose logs wiki`
 - verify `POSTGRES_*` values in `.env`
 - verify the `wiki` service still uses `DB_HOST=db`
+- if `db-data` already existed, remember that changing `POSTGRES_PASSWORD` in
+  `.env` does not change the existing PostgreSQL password
+- either reset the password inside PostgreSQL or recreate the `db-data` volume
+  if you are okay destroying the current database
 
 If Compose still binds the wrong HTTP port:
 
