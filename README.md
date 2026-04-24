@@ -1,7 +1,7 @@
 # Shadows Over Westgate Wiki.js Production Deployment
 
 This repository contains the custom `westgate` Wiki.js theme in
-`client/themes/wikijs`.
+`client/themes/westgate`.
 
 The key production constraint is:
 
@@ -188,11 +188,36 @@ This gives you:
 - the custom `westgate` theme compiled into the bundle
 - no development warning on the setup screen
 
+## Theme Deploy Helper
+
+This repository includes a helper at
+`scripts/theme-deploy.sh`.
+
+Run it with:
+
+```bash
+bash "$HOME/wikijs/customizations/scripts/theme-deploy.sh"
+```
+
+What it does:
+
+- loads `$HOME/wikijs/deploy/.env`
+- ensures the pinned stable Wiki.js source tree exists in `$HOME/wikijs/build`
+- patches the release metadata in `package.json`
+- hashes `client/themes/westgate`
+- skips the Docker build when that hash is unchanged and the image already exists
+- rebuilds when the theme changed, the image is missing, or `WIKI_VERSION` changed
+- finishes with `docker compose up -d`
+
+The change detection is intentionally scoped to theme-only updates. If you later
+start carrying production overrides outside `client/themes/westgate`, either
+extend the script to hash those paths too or do a full rebuild manually.
+
 ## Start Wiki.js
 
 ```bash
+bash "$HOME/wikijs/customizations/scripts/theme-deploy.sh"
 cd "$HOME/wikijs/deploy"
-docker compose up -d
 docker compose logs -f wiki
 ```
 
@@ -268,6 +293,20 @@ Make sure the JSON `theme` property is `westgate`, then restart Wiki.js:
 docker compose restart wiki
 ```
 
+## Theme-Only Updates
+
+For normal theme work, you do not need to repeat the manual `rsync` and
+`docker build` steps.
+
+After pulling or editing theme files, run:
+
+```bash
+bash "$HOME/wikijs/customizations/scripts/theme-deploy.sh"
+```
+
+If nothing changed in `client/themes/westgate`, the script skips the image
+rebuild and only ensures the compose stack is up.
+
 ## Updating Wiki.js
 
 When you want to upgrade:
@@ -279,7 +318,7 @@ When you want to upgrade:
 3. Rebuild the stable build context from that release.
 4. Re-copy the Westgate theme and any shared overrides.
 5. Re-apply the `package.json` metadata patch.
-6. Rebuild the image and restart compose.
+6. Run the helper to rebuild the image and restart compose.
 
 Commands:
 
@@ -293,17 +332,7 @@ cd "$HOME/wikijs/build"
 rm -rf wiki-src
 curl -fsSL "https://github.com/Requarks/wiki/archive/refs/tags/v${WIKI_VERSION}.tar.gz" | tar -xz
 mv "wiki-${WIKI_VERSION}" wiki-src
-rsync -a "$HOME/wikijs/customizations/client/themes/westgate/" "$HOME/wikijs/build/wiki-src/client/themes/westgate/"
-
-cd "$HOME/wikijs/build/wiki-src"
-sed -i 's/"dev": true/"dev": false/' package.json
-sed -i "s/\"version\": \"2.0.0\"/\"version\": \"${WIKI_VERSION}\"/" package.json
-sed -i "s/\"releaseDate\": \".*\"/\"releaseDate\": \"${WIKI_RELEASE_DATE}\"/" package.json
-docker build -f dev/build/Dockerfile -t "${WIKI_IMAGE}" .
-
-cd "$HOME/wikijs/deploy"
-docker compose up -d
-docker compose logs -f wiki
+bash "$HOME/wikijs/customizations/scripts/theme-deploy.sh"
 ```
 
 ## Backups
@@ -328,7 +357,7 @@ If the setup page says you are running an unstable development version:
 
 If the site starts but the theme is missing:
 
-- confirm `client/themes/wikijs/theme.yml` exists in `wiki-src`
+- confirm `client/themes/westgate/theme.yml` exists in `wiki-src`
 - rebuild the image after copying the theme
 - confirm the active theme setting is `westgate`
 
