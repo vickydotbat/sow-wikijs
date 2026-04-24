@@ -1,35 +1,52 @@
-# Shadows Over Westgate Wiki.js Deployment Guide
+# Shadows Over Westgate Wiki.js Production Deployment
 
-This repository is a Wiki.js 2.x application checkout with the custom `westgate`
-theme built into `client/themes/westgate`.
+This repository contains the custom `westgate` Wiki.js theme in
+`client/themes/westgate`.
 
-The important deployment detail: Wiki.js custom themes are compiled into the
-application bundle. You cannot deploy the stock `ghcr.io/requarks/wiki:2` image
-and expect this theme to appear. Build this repository into a custom Wiki.js
-image, then run that image with PostgreSQL.
+The key production constraint is:
+
+- The stock stable Wiki.js image does not contain this theme.
+- Building this repository checkout directly produces a development build.
+- Wiki.js reads `package.json` during setup; if `"dev": true`, the live setup
+  page shows the unreleased-development warning.
+
+For production, build a custom image from an official stable Wiki.js release
+source snapshot, copy in the Westgate customizations, and patch the release
+metadata before building the image.
 
 Official references:
 
-- Wiki.js install overview: https://docs.requarks.io/s/en/install
-- Wiki.js Docker install guide: https://docs.requarks.io/s/en/install/docker
-- Wiki.js requirements: https://docs.requarks.io/s/en/install/requirements
+- Install overview: https://docs.requarks.io/install
+- Docker guide: https://docs.requarks.io/s/en/install/docker
+- Requirements: https://docs.requarks.io/s/en/install/requirements
+- Stable release landing page: https://js.wiki/
+- Releases: https://github.com/Requarks/wiki/releases
+
+## Production Version Policy
+
+Do not deploy from a live clone of `master`, `main`, or any development branch.
+
+As of April 24, 2026:
+
+- `js.wiki` lists `2.5.312` as the current stable release.
+- GitHub also shows `v2.5.313`, but it is marked pre-release / pending.
+
+For live deployment, pin to a known stable version. The examples below use
+`2.5.312`. Replace it only after verifying that the newer version is marked
+stable in the official docs / site.
 
 ## Recommended VPS Shape
 
-For a small wiki, use a VPS with:
+- Ubuntu 22.04 or 24.04 LTS
+- 2 vCPU
+- 2 GB RAM
+- SSD storage sized for uploads and PostgreSQL backups
+- A real hostname such as `wiki.example.com`
 
-- Ubuntu 22.04 or 24.04 LTS.
-- 2 CPU cores if possible. Wiki.js can run on 1 core, but 2 is better.
-- At least 1 GB RAM; 2 GB is more comfortable.
-- Enough disk for uploaded assets and database backups.
-- A DNS record such as `wiki.example.com` pointed at the VPS.
-
-Wiki.js requires a real domain or subdomain. It is not designed to live under a
-subpath such as `example.com/wiki`.
+Wiki.js should be served from its own host or subdomain, not from a subpath
+like `example.com/wiki`.
 
 ## Install Docker On The VPS
-
-Use Docker Compose so Wiki.js and PostgreSQL are managed together.
 
 ```bash
 sudo apt update
@@ -42,7 +59,7 @@ sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-Optional, but convenient:
+Optional:
 
 ```bash
 sudo usermod -aG docker "$USER"
@@ -51,20 +68,17 @@ newgrp docker
 
 ## Clone This Repository
 
+This repository is the customization source, not the production base image.
+
 ```bash
 sudo mkdir -p /opt/westgate
 sudo chown "$USER":"$USER" /opt/westgate
 cd /opt/westgate
-git clone <YOUR_REPO_URL> wiki
-cd wiki
+git clone <YOUR_REPO_URL> customizations
+cd customizations
 ```
 
-Use the private Shadows Over Westgate repository URL in place of
-`<YOUR_REPO_URL>`.
-
-## Create Production Compose Files
-
-Create a deployment directory outside the checkout:
+## Create The Deployment Directory
 
 ```bash
 sudo mkdir -p /opt/westgate/deploy
@@ -79,7 +93,9 @@ cat > .env <<'EOF'
 POSTGRES_DB=wiki
 POSTGRES_USER=wikijs
 POSTGRES_PASSWORD=change-this-long-random-password
-WIKI_IMAGE=westgate-wikijs:latest
+WIKI_VERSION=2.5.312
+WIKI_RELEASE_DATE=2026-02-12T02:45:00.000Z
+WIKI_IMAGE=westgate-wikijs:2.5.312
 WIKI_HTTP_PORT=3000
 EOF
 ```
@@ -111,7 +127,7 @@ services:
       DB_PASS: ${POSTGRES_PASSWORD}
       DB_NAME: ${POSTGRES_DB}
     ports:
-      - "${WIKI_HTTP_PORT}:3000"
+      - "127.0.0.1:${WIKI_HTTP_PORT}:3000"
     volumes:
       - wiki-content:/wiki/data/content
 
@@ -120,25 +136,60 @@ volumes:
   wiki-content:
 ```
 
-This keeps PostgreSQL data and Wiki.js local content in Docker volumes.
+## Build A Stable Custom Image
 
-## Build The Custom Westgate Image
-
-From the repository checkout:
+Create a clean build workspace:
 
 ```bash
-cd /opt/westgate/wiki
-docker build -f dev/build/Dockerfile -t westgate-wikijs:latest .
+cd /opt/westgate/deploy
+set -a
+. ./.env
+set +a
+
+sudo mkdir -p /opt/westgate/build
+sudo chown "$USER":"$USER" /opt/westgate/build
+cd /opt/westgate/build
+rm -rf wiki-src
+curl -fsSL "https://github.com/Requarks/wiki/archive/refs/tags/v${WIKI_VERSION}.tar.gz" | tar -xz
+mv "wiki-${WIKI_VERSION}" wiki-src
 ```
 
-That Dockerfile runs the application build, including:
+Copy the Westgate theme into the stable source tree:
 
-- `client/themes/westgate/scss/app.scss`
-- `client/themes/westgate/js/app.js`
-- `client/themes/westgate/components/`
-- shared Wiki.js client components and generated server views
+```bash
+rsync -a /opt/westgate/customizations/client/themes/westgate/ /opt/westgate/build/wiki-src/client/themes/westgate/
+```
 
-This is the step that makes the custom theme exist in production.
+If this repository later carries additional production overrides outside the
+theme folder, copy those into `wiki-src` as well before building. Typical paths
+to review are:
+
+- `client/components/`
+- `client/scss/`
+- `server/views/`
+- `patches/`
+
+Patch the release metadata that Wiki.js reads at runtime:
+
+```bash
+cd /opt/westgate/build/wiki-src
+sed -i 's/"dev": true/"dev": false/' package.json
+sed -i "s/\"version\": \"2.0.0\"/\"version\": \"${WIKI_VERSION}\"/" package.json
+sed -i "s/\"releaseDate\": \".*\"/\"releaseDate\": \"${WIKI_RELEASE_DATE}\"/" package.json
+```
+
+Build the custom image from the official Wiki.js Dockerfile in the stable source
+snapshot:
+
+```bash
+docker build -f dev/build/Dockerfile -t "${WIKI_IMAGE}" .
+```
+
+This gives you:
+
+- a stable, pinned Wiki.js source base
+- the custom `westgate` theme compiled into the bundle
+- no development warning on the setup screen
 
 ## Start Wiki.js
 
@@ -154,11 +205,12 @@ Open:
 http://YOUR_SERVER_IP:3000
 ```
 
-Complete the first-run Wiki.js setup in the browser.
+If you are using the localhost-only port binding shown above, access it through
+the reverse proxy instead of directly.
 
 ## Put It Behind HTTPS
 
-For a public VPS, put a reverse proxy in front of Wiki.js. Caddy is the simplest:
+Caddy is the simplest reverse proxy for this setup.
 
 ```bash
 sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
@@ -182,69 +234,78 @@ Reload Caddy:
 sudo systemctl reload caddy
 ```
 
-Caddy will request and renew TLS certificates automatically. Replace
-`wiki.example.com` with the real wiki hostname.
+## First-Run Setup
 
-If using Caddy, keep the compose port bound to localhost only:
+During the setup wizard:
 
-```yaml
-ports:
-  - "127.0.0.1:3000:3000"
-```
+- set the public URL to `https://wiki.example.com`
+- create the administrator account
+- finish installation normally
 
-Then restart:
-
-```bash
-cd /opt/westgate/deploy
-docker compose up -d
-```
+If the setup screen still shows the development warning, the image was built
+from a source tree where `package.json` still had `"dev": true`.
 
 ## Select The Westgate Theme
 
-After the first run, sign into Wiki.js as an administrator.
+After first login, choose the `Westgate` theme in the admin UI if it appears.
 
-In the admin interface, choose the `Westgate` theme if it appears in the theme
-settings. If the admin UI does not expose it cleanly, set it directly in the
-database.
-
-Enter PostgreSQL:
+If needed, confirm the active theme directly in PostgreSQL:
 
 ```bash
 cd /opt/westgate/deploy
-docker compose exec db psql -U wikijs -d wiki
+set -a
+. ./.env
+set +a
+docker compose exec db psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}"
 ```
 
-Inspect the theming setting:
+Inspect the theming row:
 
 ```sql
 SELECT key, value FROM settings WHERE key = 'theming';
 ```
 
-The `value` column is JSON. Make sure its `theme` property is `westgate`, then
-restart Wiki.js:
+Make sure the JSON `theme` property is `westgate`, then restart Wiki.js:
 
 ```bash
 docker compose restart wiki
 ```
 
-The exact JSON shape can vary with Wiki.js settings, so inspect before updating.
-Do not blindly overwrite unrelated theming settings.
+## Updating Wiki.js
 
-## Updating The Site
+When you want to upgrade:
 
-When this repository changes:
+1. Pick a newer release only after confirming it is stable in the official docs
+   or on `js.wiki`.
+2. Update `WIKI_VERSION`, `WIKI_RELEASE_DATE`, and `WIKI_IMAGE` in
+   `/opt/westgate/deploy/.env`.
+3. Rebuild the stable build context from that release.
+4. Re-copy the Westgate theme and any shared overrides.
+5. Re-apply the `package.json` metadata patch.
+6. Rebuild the image and restart compose.
+
+Commands:
 
 ```bash
-cd /opt/westgate/wiki
-git pull
-docker build -f dev/build/Dockerfile -t westgate-wikijs:latest .
+cd /opt/westgate/deploy
+set -a
+. ./.env
+set +a
+
+cd /opt/westgate/build
+rm -rf wiki-src
+curl -fsSL "https://github.com/Requarks/wiki/archive/refs/tags/v${WIKI_VERSION}.tar.gz" | tar -xz
+mv "wiki-${WIKI_VERSION}" wiki-src
+rsync -a /opt/westgate/customizations/client/themes/westgate/ /opt/westgate/build/wiki-src/client/themes/westgate/
+
+cd /opt/westgate/build/wiki-src
+sed -i 's/"dev": true/"dev": false/' package.json
+sed -i "s/\"version\": \"2.0.0\"/\"version\": \"${WIKI_VERSION}\"/" package.json
+sed -i "s/\"releaseDate\": \".*\"/\"releaseDate\": \"${WIKI_RELEASE_DATE}\"/" package.json
+docker build -f dev/build/Dockerfile -t "${WIKI_IMAGE}" .
+
 cd /opt/westgate/deploy
 docker compose up -d
-```
-
-If the database schema changes during a Wiki.js upgrade, watch the logs:
-
-```bash
 docker compose logs -f wiki
 ```
 
@@ -254,50 +315,29 @@ Back up PostgreSQL:
 
 ```bash
 cd /opt/westgate/deploy
-docker compose exec db pg_dump -U wikijs wiki > wiki-$(date +%F).sql
+docker compose exec db pg_dump -U "${POSTGRES_USER}" "${POSTGRES_DB}" > "wiki-$(date +%F).sql"
 ```
 
-Back up Docker volumes if you use local file storage:
-
-```bash
-docker run --rm \
-  -v deploy_wiki-content:/data:ro \
-  -v "$PWD":/backup \
-  alpine tar czf /backup/wiki-content-$(date +%F).tar.gz -C /data .
-```
-
-Keep backups off the VPS as well as on it.
-
-## Development Notes
-
-Inside the development container, use:
-
-```bash
-yarn dev
-```
-
-`yarn dev` live-reloads theme and client changes. During visual iteration, do
-not repeatedly run `yarn build`. Use `yarn build` for production-style validation
-or when building the deploy image.
+If you use local file storage, also back up the Docker volume used for
+`/wiki/data/content`.
 
 ## Troubleshooting
 
-If the site loads but does not look like Westgate:
+If the setup page says you are running an unstable development version:
 
-- Confirm the deployed image was built from this repository.
-- Confirm the active theme setting is `westgate`.
-- Confirm the browser is not serving stale assets.
-- Rebuild the image after theme changes.
+- confirm you built from an official stable release tarball
+- confirm `package.json` in `wiki-src` has `"dev": false`
+- destroy and rebuild the custom image after fixing the metadata
 
-If Wiki.js cannot connect to the database:
+If the site starts but the theme is missing:
 
-- Confirm `DB_HOST` matches the compose service name, usually `db`.
-- Confirm `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` match the
-  Wiki.js environment variables.
-- Check `docker compose logs db` and `docker compose logs wiki`.
+- confirm `client/themes/westgate/theme.yml` exists in `wiki-src`
+- rebuild the image after copying the theme
+- confirm the active theme setting is `westgate`
 
-If HTTPS does not work:
+If Wiki.js cannot connect to PostgreSQL:
 
-- Confirm DNS points to the VPS.
-- Confirm ports 80 and 443 are open in the VPS firewall/security group.
-- Check `sudo journalctl -u caddy -f`.
+- check `docker compose logs db`
+- check `docker compose logs wiki`
+- verify `POSTGRES_*` values in `.env`
+- verify the `wiki` service still uses `DB_HOST=db`
